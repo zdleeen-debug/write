@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Inject API Key
-        # ★★★ 關鍵修正：使用 *.html 讓它自動搜尋並替換所有網頁 ★★★
+        # ★★★ 關鍵修正：這裡改成 *.html，確保 index.html 或 student.html 都會被處理 ★★★
         run: |
           sed -i 's/SECRET_KEY_PLACEHOLDER/${{ secrets.GEMINI_API_KEY }}/g' *.html
 
