@@ -13,12 +13,10 @@
         :root { --primary-color: #4285f4; --bg-color: #f0f2f5; --warn-color: #fbbc04; --error-color: #ea4335; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-color); margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         
-        /* 登入畫面 */
         #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 100; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; }
         #login-screen input { font-size: 1.2rem; padding: 12px; margin: 10px; border: 2px solid #ddd; border-radius: 12px; width: 200px; text-align: center; outline: none; }
         #login-screen button { font-size: 1.2rem; padding: 12px 40px; background: var(--primary-color); color: white; border: none; border-radius: 12px; cursor: pointer; transition: 0.2s; }
         
-        /* 聊天介面 */
         header { background: white; padding: 15px; text-align: center; font-weight: bold; color: #444; box-shadow: 0 1px 3px rgba(0,0,0,0.1); z-index: 10; font-size: 1.1rem; }
         #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; scroll-behavior: smooth; background: #f0f2f5; }
         
@@ -26,15 +24,12 @@
         .bot { align-self: flex-start; background: white; color: #333; border-bottom-left-radius: 4px; }
         .user { align-self: flex-end; background: var(--primary-color); color: white; border-bottom-right-radius: 4px; }
         
-        /* 快速按鈕區 */
         #quick-actions { background: #fff; padding: 10px; display: flex; gap: 10px; overflow-x: auto; border-top: 1px solid #eee; white-space: nowrap; -webkit-overflow-scrolling: touch; }
         .quick-btn { padding: 8px 15px; background: #e8f0fe; color: #1967d2; border: 1px solid #d2e3fc; border-radius: 20px; font-size: 0.9rem; cursor: pointer; transition: 0.2s; font-weight: 500; }
         
-        /* 輸入區域 */
         #input-area { background: white; padding: 10px 15px 20px 15px; display: flex; gap: 10px; border-top: 1px solid #f0f0f0; }
         #user-input { flex: 1; padding: 12px 15px; border: 1px solid #ddd; border-radius: 25px; font-size: 1rem; outline: none; background: #f8f9fa; }
         
-        /* 發送按鈕狀態 (紅綠燈) */
         #send-btn { background: var(--primary-color); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.3s; }
         #send-btn:disabled { background: #ccc; cursor: not-allowed; }
         #send-btn.cooling { background: var(--error-color); cursor: wait; font-size: 1rem; animation: pulse 1s infinite; }
@@ -71,10 +66,8 @@
 
 <script>
     // ==========================================================
-    //  【設定區】
+    //  【設定區】替身代碼 (GitHub 會自動換成真的)
     // ==========================================================
-    
-    // ★★★ 這裡一定要放替身代碼，GitHub Action 才會幫你換成真的 ★★★
     const GEMINI_API_KEY = "SECRET_KEY_PLACEHOLDER"; 
 
     const firebaseConfig = {
@@ -129,131 +122,3 @@
 
     async function sendMessage() {
         const inputField = document.getElementById('user-input');
-        const sendBtn = document.getElementById('send-btn');
-        const userText = inputField.value.trim();
-        
-        if (!userText) return;
-        if (sendBtn.disabled) return;
-
-        appendMessage("user", userText);
-        inputField.value = "";
-        saveToFirebase(userText, "user");
-
-        chatHistory.push({ role: "user", parts: [{ text: userText }] });
-        document.getElementById('loader').style.display = 'block';
-        
-        sendBtn.disabled = true;
-        const quickBtns = document.querySelectorAll('.quick-btn');
-        quickBtns.forEach(b => b.disabled = true);
-
-        try {
-            const botReply = await callGeminiAPI(chatHistory);
-            appendMessage("bot", botReply);
-            chatHistory.push({ role: "model", parts: [{ text: botReply }] });
-            saveToFirebase(botReply, "model");
-
-        } catch (error) {
-            console.error(error);
-            if (error.message.includes("429") || error.message.includes("忙碌")) {
-                startCoolDown(30); 
-                appendMessage("bot", `🚦 **系統塞車中** (免費版額度滿了)\n請看右下角按鈕倒數，倒數完再按一次即可！`);
-            } else {
-                appendMessage("bot", `⚠️ 發生錯誤：${error.message}`);
-                sendBtn.disabled = false;
-            }
-        } finally {
-            document.getElementById('loader').style.display = 'none';
-            if (!document.getElementById('send-btn').classList.contains('cooling')) {
-                sendBtn.disabled = false;
-                quickBtns.forEach(b => b.disabled = false);
-            }
-            inputField.focus();
-        }
-    }
-
-    function startCoolDown(seconds) {
-        const btn = document.getElementById('send-btn');
-        btn.classList.add('cooling'); 
-        btn.disabled = true;
-        
-        let timeLeft = seconds;
-        btn.innerText = timeLeft; 
-        
-        const timer = setInterval(() => {
-            timeLeft--;
-            btn.innerText = timeLeft;
-            if (timeLeft <= 0) {
-                clearInterval(timer);
-                btn.classList.remove('cooling');
-                btn.innerText = "➤";
-                btn.disabled = false;
-                const quickBtns = document.querySelectorAll('.quick-btn');
-                quickBtns.forEach(b => b.disabled = false);
-            }
-        }, 1000);
-    }
-
-    async function callGeminiAPI(history) {
-        const modelName = "gemini-1.5-flash"; 
-        let url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
-        
-        const payload = {
-            contents: history,
-            generationConfig: { maxOutputTokens: 800, temperature: 0.7 }
-        };
-
-        let response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            if (response.status === 429) throw new Error("429 Busy");
-            if (response.status === 404) {
-                 return await callGeminiFallback(history);
-            }
-            throw new Error(response.statusText);
-        }
-        
-        const data = await response.json();
-        return data.candidates[0].content.parts[0].text;
-    }
-
-    async function callGeminiFallback(history) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent?key=${GEMINI_API_KEY}`;
-        const response = await fetch(url, {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ contents: history })
-        });
-        const data = await response.json();
-        return data.candidates[0].content.parts[0].text;
-    }
-
-    function appendMessage(sender, text) {
-        const container = document.getElementById('chat-container');
-        const div = document.createElement('div');
-        div.className = `message ${sender}`;
-        try { div.innerHTML = marked.parse(text); } catch (e) { div.innerText = text; }
-        container.appendChild(div);
-        container.scrollTop = container.scrollHeight;
-    }
-
-    function saveToFirebase(text, role) {
-        if (!db) return;
-        try {
-            const docRef = db.collection("grade6_essays").doc(studentId);
-            docRef.collection("chat").add({
-                text: text, role: role, timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            docRef.set({
-                student_id: studentId, last_active: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-        } catch (e) { console.warn("Save failed", e); }
-    }
-
-    function handleKeyPress(e) { if (e.key === 'Enter') sendMessage(); }
-</script>
-</body>
-</html>
