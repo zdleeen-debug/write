@@ -66,8 +66,9 @@
 
 <script>
     // ==========================================================
-    //  【設定區】替身代碼 (GitHub 會自動換成真的)
+    //  【設定區】替身代碼
     // ==========================================================
+    // ⚠️ 請勿修改這行，GitHub Action 會自動替換它
     const GEMINI_API_KEY = "SECRET_KEY_PLACEHOLDER"; 
 
     const firebaseConfig = {
@@ -128,6 +129,12 @@
         if (!userText) return;
         if (sendBtn.disabled) return;
 
+        // 檢查 GitHub 是否成功替換了 Key
+        if (GEMINI_API_KEY.includes("PLACEHOLDER")) {
+            alert("⚠️ 系統設定錯誤：API Key 尚未啟用。\n請老師檢查 GitHub Actions 是否執行成功。");
+            return;
+        }
+
         appendMessage("user", userText);
         inputField.value = "";
         saveToFirebase(userText, "user");
@@ -152,11 +159,9 @@
             if (error.message.includes("429") || error.message.includes("忙碌")) {
                 startCoolDown(30); 
                 appendMessage("bot", `🚦 **系統塞車中** (免費版額度滿了)\n請看右下角按鈕倒數，倒數完再按一次即可！`);
-            } else if (error.message.includes("PLACEHOLDER")) {
-                appendMessage("bot", `⚠️ **系統設定錯誤**\nGitHub 尚未成功置換 API Key，請老師檢查 GitHub Action 設定。`);
             } else {
-                appendMessage("bot", `⚠️ 發生錯誤：${error.message}`);
-                sendBtn.disabled = false;
+                appendMessage("bot", `⚠️ 發生錯誤：${error.message} (請稍後再試)`);
+                sendBtn.disabled = false; // 非冷卻錯誤則解鎖
             }
         } finally {
             document.getElementById('loader').style.display = 'none';
@@ -189,7 +194,6 @@
     }
 
     async function callGeminiAPI(history) {
-        // ★★★ 使用 1.5-flash ★★★
         const modelName = "gemini-1.5-flash"; 
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
         
@@ -206,20 +210,22 @@
 
         const data = await response.json();
 
-        // 錯誤處理 (包含 404, 429)
         if (!response.ok) {
             if (response.status === 429) throw new Error("429 Busy");
-            if (response.status === 404) {
-                 return await callGeminiFallback(history);
-            }
+            if (response.status === 404) return await callGeminiFallback(history);
+            // 這裡回傳錯誤訊息，而不是讓程式往下跑導致 crash
             throw new Error(data.error?.message || response.statusText);
         }
         
-        return data.candidates[0].content.parts[0].text;
+        // ★★★ 防當機修正：確認有 candidates 才讀取 ★★★
+        if (data.candidates && data.candidates.length > 0) {
+            return data.candidates[0].content.parts[0].text;
+        } else {
+            throw new Error("AI 沒有回傳任何內容，請重試。");
+        }
     }
 
     async function callGeminiFallback(history) {
-        // ★★★ 備用模型：Pro Latest ★★★
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent?key=${GEMINI_API_KEY}`;
         const response = await fetch(url, {
              method: 'POST',
@@ -232,8 +238,12 @@
             if (response.status === 429) throw new Error("429 Busy");
             throw new Error(data.error?.message || "Fallback Failed");
         }
-        
-        return data.candidates[0].content.parts[0].text;
+
+        if (data.candidates && data.candidates.length > 0) {
+            return data.candidates[0].content.parts[0].text;
+        } else {
+            throw new Error("備用模型也沒有回傳內容。");
+        }
     }
 
     function appendMessage(sender, text) {
