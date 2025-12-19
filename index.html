@@ -122,3 +122,143 @@
 
     async function sendMessage() {
         const inputField = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const userText = inputField.value.trim();
+        
+        if (!userText) return;
+        if (sendBtn.disabled) return;
+
+        appendMessage("user", userText);
+        inputField.value = "";
+        saveToFirebase(userText, "user");
+
+        chatHistory.push({ role: "user", parts: [{ text: userText }] });
+        document.getElementById('loader').style.display = 'block';
+        
+        // 鎖定所有按鈕
+        sendBtn.disabled = true;
+        const quickBtns = document.querySelectorAll('.quick-btn');
+        quickBtns.forEach(b => b.disabled = true);
+
+        try {
+            const botReply = await callGeminiAPI(chatHistory);
+            
+            appendMessage("bot", botReply);
+            chatHistory.push({ role: "model", parts: [{ text: botReply }] });
+            saveToFirebase(botReply, "model");
+
+        } catch (error) {
+            console.error(error);
+            if (error.message.includes("429") || error.message.includes("忙碌")) {
+                startCoolDown(30); 
+                appendMessage("bot", `🚦 **系統塞車中** (免費版額度滿了)\n請看右下角按鈕倒數，倒數完再按一次即可！`);
+            } else if (error.message.includes("PLACEHOLDER")) {
+                appendMessage("bot", `⚠️ **系統設定錯誤**\nGitHub 尚未成功置換 API Key，請老師檢查 GitHub Action 設定。`);
+            } else {
+                appendMessage("bot", `⚠️ 發生錯誤：${error.message}`);
+                sendBtn.disabled = false;
+            }
+        } finally {
+            document.getElementById('loader').style.display = 'none';
+            if (!document.getElementById('send-btn').classList.contains('cooling')) {
+                sendBtn.disabled = false;
+                quickBtns.forEach(b => b.disabled = false);
+            }
+            inputField.focus();
+        }
+    }
+
+    function startCoolDown(seconds) {
+        const btn = document.getElementById('send-btn');
+        btn.classList.add('cooling'); 
+        btn.disabled = true;
+        let timeLeft = seconds;
+        btn.innerText = timeLeft; 
+        const timer = setInterval(() => {
+            timeLeft--;
+            btn.innerText = timeLeft;
+            if (timeLeft <= 0) {
+                clearInterval(timer);
+                btn.classList.remove('cooling');
+                btn.innerText = "➤";
+                btn.disabled = false;
+                const quickBtns = document.querySelectorAll('.quick-btn');
+                quickBtns.forEach(b => b.disabled = false);
+            }
+        }, 1000);
+    }
+
+    async function callGeminiAPI(history) {
+        // ★★★ 使用 1.5-flash ★★★
+        const modelName = "gemini-1.5-flash"; 
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+        
+        const payload = {
+            contents: history,
+            generationConfig: { maxOutputTokens: 800, temperature: 0.7 }
+        };
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        // 錯誤處理 (包含 404, 429)
+        if (!response.ok) {
+            if (response.status === 429) throw new Error("429 Busy");
+            if (response.status === 404) {
+                 return await callGeminiFallback(history);
+            }
+            throw new Error(data.error?.message || response.statusText);
+        }
+        
+        return data.candidates[0].content.parts[0].text;
+    }
+
+    async function callGeminiFallback(history) {
+        // ★★★ 備用模型：Pro Latest ★★★
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent?key=${GEMINI_API_KEY}`;
+        const response = await fetch(url, {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ contents: history })
+        });
+        const data = await response.json();
+        
+        if (!response.ok) {
+            if (response.status === 429) throw new Error("429 Busy");
+            throw new Error(data.error?.message || "Fallback Failed");
+        }
+        
+        return data.candidates[0].content.parts[0].text;
+    }
+
+    function appendMessage(sender, text) {
+        const container = document.getElementById('chat-container');
+        const div = document.createElement('div');
+        div.className = `message ${sender}`;
+        try { div.innerHTML = marked.parse(text); } catch (e) { div.innerText = text; }
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function saveToFirebase(text, role) {
+        if (!db) return;
+        try {
+            const docRef = db.collection("grade6_essays").doc(studentId);
+            docRef.collection("chat").add({
+                text: text, role: role, timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            docRef.set({
+                student_id: studentId, last_active: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        } catch (e) { console.warn("Save failed", e); }
+    }
+
+    function handleKeyPress(e) { if (e.key === 'Enter') sendMessage(); }
+</script>
+</body>
+</html>
