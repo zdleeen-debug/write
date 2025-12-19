@@ -3,55 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>作文小老師：一則故事的省思</title>
+    <title>作文小幫手</title>
     
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     
     <style>
-        :root { --primary-color: #4285f4; --bg-color: #f0f2f5; }
+        :root { --primary-color: #4285f4; --bg-color: #f0f2f5; --warn-color: #fbbc04; --error-color: #ea4335; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-color); margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         
+        /* 登入畫面 */
         #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 100; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; }
         #login-screen input { font-size: 1.2rem; padding: 12px; margin: 10px; border: 2px solid #ddd; border-radius: 12px; width: 200px; text-align: center; outline: none; }
         #login-screen button { font-size: 1.2rem; padding: 12px 40px; background: var(--primary-color); color: white; border: none; border-radius: 12px; cursor: pointer; transition: 0.2s; }
-        #login-screen button:hover { background: #3367d6; transform: translateY(-2px); }
-
+        
+        /* 聊天介面 */
         header { background: white; padding: 15px; text-align: center; font-weight: bold; color: #444; box-shadow: 0 1px 3px rgba(0,0,0,0.1); z-index: 10; font-size: 1.1rem; }
         #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; scroll-behavior: smooth; background: #f0f2f5; }
         
         .message { max-width: 85%; padding: 12px 18px; border-radius: 18px; line-height: 1.6; font-size: 1rem; position: relative; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .bot { align-self: flex-start; background: white; color: #333; border-bottom-left-radius: 4px; }
         .user { align-self: flex-end; background: var(--primary-color); color: white; border-bottom-right-radius: 4px; }
-        .system-msg { align-self: center; background: #fff3cd; color: #856404; font-size: 0.85rem; padding: 5px 15px; border-radius: 20px; margin: 5px 0; border: 1px solid #ffeeba; }
         
-        #input-area { background: white; padding: 15px; display: flex; gap: 10px; border-top: 1px solid #ddd; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
+        /* 快速按鈕區 */
+        #quick-actions { background: #fff; padding: 10px; display: flex; gap: 10px; overflow-x: auto; border-top: 1px solid #eee; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+        .quick-btn { padding: 8px 15px; background: #e8f0fe; color: #1967d2; border: 1px solid #d2e3fc; border-radius: 20px; font-size: 0.9rem; cursor: pointer; transition: 0.2s; font-weight: 500; }
+        
+        /* 輸入區域 */
+        #input-area { background: white; padding: 10px 15px 20px 15px; display: flex; gap: 10px; border-top: 1px solid #f0f0f0; }
         #user-input { flex: 1; padding: 12px 15px; border: 1px solid #ddd; border-radius: 25px; font-size: 1rem; outline: none; background: #f8f9fa; }
-        #send-btn { background: var(--primary-color); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        #send-btn:disabled { background: #ccc; cursor: wait; }
+        
+        /* 發送按鈕狀態 (紅綠燈) */
+        #send-btn { background: var(--primary-color); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.3s; }
+        #send-btn:disabled { background: #ccc; cursor: not-allowed; }
+        #send-btn.cooling { background: var(--error-color); cursor: wait; font-size: 1rem; animation: pulse 1s infinite; }
+        
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+        
         .typing-indicator { display: none; align-self: flex-start; background: transparent; color: #888; font-size: 0.9rem; margin-left: 10px; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
     <div id="login-screen">
-        <h2>✍️ 作文小幫手</h2>
-        <p>康軒六上：一則故事的省思</p>
-        <input type="text" id="student-id" placeholder="請輸入座號 (例如: 05)" inputmode="numeric">
+        <h2>🚀 作文加速器</h2>
+        <p>一則故事的省思</p>
+        <input type="text" id="student-id" placeholder="請輸入座號" inputmode="numeric">
         <button id="start-btn" onclick="startSession()">開始寫作</button>
-        <p id="status-msg" style="color:red; font-size:0.9rem; display:none; margin-top:10px;"></p>
     </div>
 
     <header id="header-title">一則故事的省思</header>
     <div id="chat-container"></div>
     <div class="typing-indicator" id="loader">老師正在思考...</div>
     
+    <div id="quick-actions">
+        <button class="quick-btn" onclick="sendQuickReply('1')">選項 1</button>
+        <button class="quick-btn" onclick="sendQuickReply('2')">選項 2</button>
+        <button class="quick-btn" onclick="sendQuickReply('3')">選項 3</button>
+        <button class="quick-btn" onclick="sendQuickReply('請給我建議')">💡 靈感</button>
+    </div>
+
     <div id="input-area">
-        <input type="text" id="user-input" placeholder="輸入你的想法..." onkeypress="handleKeyPress(event)" autocomplete="off">
-        <button id="send-btn" onclick="sendMessage()">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
-        </button>
+        <input type="text" id="user-input" placeholder="輸入想法..." onkeypress="handleKeyPress(event)" autocomplete="off">
+        <button id="send-btn" onclick="sendMessage()">➤</button>
     </div>
 
 <script>
@@ -59,10 +74,9 @@
     //  【設定區】
     // ==========================================================
     
-    // 老師，我已經幫您把 Key 填好了，請不要修改這裡，直接使用即可！
+    // ★★★ 這裡一定要放替身代碼，GitHub Action 才會幫你換成真的 ★★★
     const GEMINI_API_KEY = "SECRET_KEY_PLACEHOLDER"; 
 
-    // Firebase 設定
     const firebaseConfig = {
         apiKey: "AIzaSyDaYe4bu-RujGIfzjzKkrZgl1EPCxGYVN4",
         authDomain: "writing-ai-teacher.firebaseapp.com",
@@ -73,60 +87,53 @@
         measurementId: "G-TBVCG59B3M"
     };
 
-    // ==========================================================
-    //  系統核心 (穩定版)
-    // ==========================================================
-
     const SYSTEM_PROMPT = `
-    你是一位親切、有耐心的國小六年級國語老師。任務是引導學生完成作文〈一則故事的省思〉。
-    1. 絕對不可直接幫學生寫文章，只能用提問引導。
-    2. 語氣要親切，多給予正向鼓勵。
-    3. 每次只問一個步驟，等待學生回答。
-    
-    【引導步驟】
-    1. [cite_start]選定故事：請學生選一個故事（例如康軒課本提過的『三人成虎』，或是寓言故事如龜兔賽跑、井底之蛙）。[cite: 3, 4, 31]
-    2. [cite_start]取材與構思：請學生簡單說出故事大意（主角是誰？發生什麼事？）。[cite: 9]
-    3. [cite_start]確立主旨：問學生這個故事想告訴我們什麼道理？[cite: 8, 12]
-    4. [cite_start]生活省思：引導學生思考，這個道理在生活中有沒有類似的經驗？[cite: 14, 15]
-    5. [cite_start]擬定大綱：整理成寫作大綱（緣起 -> 故事簡述 -> 省思 -> 結語）。[cite: 17-24]
+    你是一位國小六年級國語老師。任務是「快速」引導學生完成作文〈一則故事的省思〉。
+    【核心規則】
+    1. 為了節省學生打字時間，**每個步驟請務必主動提供 3 個具體的選項 (標示 1, 2, 3)**。
+    2. 學生可以直接回答數字 (如 "1")。
+    3. 語氣親切，多鼓勵。
     `;
 
-    // 初始化 Firebase
     let db = null;
     try {
         firebase.initializeApp(firebaseConfig);
         db = firebase.firestore();
-        console.log("Firebase 初始化成功");
-    } catch (e) {
-        console.warn("Firebase 連線失敗:", e);
-    }
+    } catch (e) { console.warn("Firebase Error", e); }
 
     let studentId = "";
     let chatHistory = []; 
 
-    // 啟動對話
     function startSession() {
         const input = document.getElementById('student-id').value.trim();
         if (!input) return alert("請輸入座號！");
         
         studentId = input;
-        document.getElementById('header-title').innerText = `座號: ${studentId} 的作文指導`;
+        document.getElementById('header-title').innerText = `座號: ${studentId}`;
         document.getElementById('login-screen').style.display = 'none';
 
         chatHistory = [
             { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
-            { role: "model", parts: [{ text: "收到，我是作文老師。" }] }
+            { role: "model", parts: [{ text: "收到，我會提供選項。" }] }
         ];
 
-        const welcomeMsg = `哈囉！我是作文小老師。座號 ${studentId} 的同學你好！👋\n\n我們今天要練習寫〈一則故事的省思〉。寫作的第一步是選故事。\n\n**你想好要寫哪一個故事了嗎？**\n(例如：三人成虎、龜兔賽跑，或是你自己看過的書都可以喔！)`;
+        const welcomeMsg = `哈囉！我是作文小老師。為了讓你寫得更快，我會直接給你建議，你只要選號碼就可以了！👌\n\n**第一步：請選擇你想寫的故事 (點擊下方按鈕或輸入數字)：**\n\n1. **龜兔賽跑** (關於堅持與驕傲)\n2. **放羊的孩子** (關於誠實)\n3. **井底之蛙** (關於眼界)\n\n(如果你想寫別的，也可以直接打字告訴我喔！)`;
         appendMessage("bot", welcomeMsg);
         chatHistory.push({ role: "model", parts: [{ text: welcomeMsg }] });
     }
 
+    function sendQuickReply(text) {
+        document.getElementById('user-input').value = text;
+        sendMessage();
+    }
+
     async function sendMessage() {
         const inputField = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
         const userText = inputField.value.trim();
+        
         if (!userText) return;
+        if (sendBtn.disabled) return;
 
         appendMessage("user", userText);
         inputField.value = "";
@@ -134,78 +141,85 @@
 
         chatHistory.push({ role: "user", parts: [{ text: userText }] });
         document.getElementById('loader').style.display = 'block';
-        document.getElementById('send-btn').disabled = true;
+        
+        sendBtn.disabled = true;
+        const quickBtns = document.querySelectorAll('.quick-btn');
+        quickBtns.forEach(b => b.disabled = true);
 
         try {
-            const botReply = await callGeminiAPI(chatHistory, 0);
-            
+            const botReply = await callGeminiAPI(chatHistory);
             appendMessage("bot", botReply);
             chatHistory.push({ role: "model", parts: [{ text: botReply }] });
             saveToFirebase(botReply, "model");
 
         } catch (error) {
             console.error(error);
-            appendMessage("bot", `⚠️ 老師現在有點忙，請稍等一下再重新發送試試看！\n(${error.message})`);
+            if (error.message.includes("429") || error.message.includes("忙碌")) {
+                startCoolDown(30); 
+                appendMessage("bot", `🚦 **系統塞車中** (免費版額度滿了)\n請看右下角按鈕倒數，倒數完再按一次即可！`);
+            } else {
+                appendMessage("bot", `⚠️ 發生錯誤：${error.message}`);
+                sendBtn.disabled = false;
+            }
         } finally {
             document.getElementById('loader').style.display = 'none';
-            document.getElementById('send-btn').disabled = false;
+            if (!document.getElementById('send-btn').classList.contains('cooling')) {
+                sendBtn.disabled = false;
+                quickBtns.forEach(b => b.disabled = false);
+            }
             inputField.focus();
         }
     }
 
-    // 呼叫 Gemini API
-    async function callGeminiAPI(history, retryCount) {
+    function startCoolDown(seconds) {
+        const btn = document.getElementById('send-btn');
+        btn.classList.add('cooling'); 
+        btn.disabled = true;
         
-        // ★★★ 關鍵修正：使用 "gemini-flash-latest" ★★★
-        // 這個代號在您的白名單中，而且是指向最穩定的版本
-        const modelName = "gemini-flash-latest"; 
+        let timeLeft = seconds;
+        btn.innerText = timeLeft; 
         
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+        const timer = setInterval(() => {
+            timeLeft--;
+            btn.innerText = timeLeft;
+            if (timeLeft <= 0) {
+                clearInterval(timer);
+                btn.classList.remove('cooling');
+                btn.innerText = "➤";
+                btn.disabled = false;
+                const quickBtns = document.querySelectorAll('.quick-btn');
+                quickBtns.forEach(b => b.disabled = false);
+            }
+        }, 1000);
+    }
+
+    async function callGeminiAPI(history) {
+        const modelName = "gemini-1.5-flash"; 
+        let url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
         
         const payload = {
             contents: history,
             generationConfig: { maxOutputTokens: 800, temperature: 0.7 }
         };
 
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+        let response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
 
-            // 處理 429 塞車 (自動重試)
-            if (response.status === 429) {
-                if (retryCount < 3) {
-                    const waitTime = (retryCount + 1) * 2000; 
-                    console.warn(`[429] 系統忙碌，休息 ${waitTime/1000} 秒後重試...`);
-                    showSystemMessage(`⏳ 系統忙碌排隊中，請稍候... (第 ${retryCount+1} 次嘗試)`);
-                    
-                    await new Promise(r => setTimeout(r, waitTime));
-                    return await callGeminiAPI(history, retryCount + 1);
-                } else {
-                    throw new Error("目前使用人數過多，請休息 30 秒後再試一次！");
-                }
+        if (!response.ok) {
+            if (response.status === 429) throw new Error("429 Busy");
+            if (response.status === 404) {
+                 return await callGeminiFallback(history);
             }
-
-            const data = await response.json();
-            
-            if (!response.ok) {
-                // 如果連這個都找不到，我們最後試試 Pro-latest
-                if (response.status === 404) {
-                    return await callGeminiFallback(history);
-                }
-                throw new Error(data.error?.message || response.statusText);
-            }
-            
-            return data.candidates[0].content.parts[0].text;
-
-        } catch (e) {
-            throw e;
+            throw new Error(response.statusText);
         }
+        
+        const data = await response.json();
+        return data.candidates[0].content.parts[0].text;
     }
 
-    // 備用方案
     async function callGeminiFallback(history) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent?key=${GEMINI_API_KEY}`;
         const response = await fetch(url, {
@@ -222,15 +236,6 @@
         const div = document.createElement('div');
         div.className = `message ${sender}`;
         try { div.innerHTML = marked.parse(text); } catch (e) { div.innerText = text; }
-        container.appendChild(div);
-        container.scrollTop = container.scrollHeight;
-    }
-
-    function showSystemMessage(text) {
-        const container = document.getElementById('chat-container');
-        const div = document.createElement('div');
-        div.className = `system-msg`;
-        div.innerText = text;
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
     }
