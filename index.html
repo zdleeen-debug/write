@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>作文小老師：一則故事的省思</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <style>
+        /* 簡單清爽的介面風格，適合平板操作 */
+        :root { --primary-color: #4285f4; --bg-color: #f0f2f5; --chat-bg: #fff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-color); margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        /* 登入畫面 */
+        #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 100; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; }
+        #login-screen h2 { color: #333; margin-bottom: 10px; }
+        #login-screen p { color: #666; margin-bottom: 20px; }
+        #login-screen input { font-size: 1.2rem; padding: 12px; margin: 10px; border: 2px solid #ddd; border-radius: 12px; width: 200px; text-align: center; outline: none; transition: 0.3s; }
+        #login-screen input:focus { border-color: var(--primary-color); }
+        #login-screen button { font-size: 1.2rem; padding: 12px 40px; background: var(--primary-color); color: white; border: none; border-radius: 12px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 6px rgba(66,133,244,0.2); }
+        #login-screen button:hover { background: #3367d6; transform: translateY(-2px); }
+
+        /* 頂部標題列 */
+        header { background: white; padding: 15px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-weight: bold; color: #444; font-size: 1.1rem; z-index: 10; }
+        
+        /* 聊天區域 */
+        #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; scroll-behavior: smooth; background: var(--bg-color); }
+        
+        /* 訊息泡泡樣式 */
+        .message { max-width: 85%; padding: 12px 18px; border-radius: 18px; line-height: 1.6; font-size: 1rem; position: relative; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .bot { align-self: flex-start; background: white; color: #333; border-bottom-left-radius: 4px; }
+        .user { align-self: flex-end; background: var(--primary-color); color: white; border-bottom-right-radius: 4px; }
+        .message p { margin: 0 0 10px 0; }
+        .message p:last-child { margin: 0; }
+        .message ul, .message ol { padding-left: 20px; margin: 5px 0; }
+
+        /* 底部輸入區 */
+        #input-area { background: white; padding: 15px; display: flex; gap: 10px; border-top: 1px solid #ddd; align-items: center; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
+        #user-input { flex: 1; padding: 12px 15px; border: 1px solid #ddd; border-radius: 25px; font-size: 1rem; outline: none; background: #f8f9fa; transition: 0.3s; }
+        #user-input:focus { border-color: var(--primary-color); background: white; }
+        #send-btn { background: var(--primary-color); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: 0.2s; }
+        #send-btn:hover { background: #3367d6; }
+        #send-btn:disabled { background: #ccc; cursor: not-allowed; }
+        #send-btn svg { width: 20px; height: 20px; fill: white; }
+
+        /* 載入動畫 */
+        .typing-indicator { display: none; align-self: flex-start; background: transparent; padding: 0 10px; font-size: 0.8rem; color: #888; margin-bottom: 5px; }
+        .dots { display: inline-block; animation: dot-blink 1.5s infinite linear; }
+        @keyframes dot-blink { 0%, 20% { content: '.'; } 40% { content: '..'; } 60%, 100% { content: '...'; } }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen">
+        <h2>✍️ 作文小幫手</h2>
+        <p>康軒國語六上：一則故事的省思</p>
+        <input type="text" id="student-id" placeholder="請輸入座號 (例如: 05)" inputmode="numeric">
+        <button onclick="startSession()">開始寫作</button>
+    </div>
+
+    <header id="header-title">一則故事的省思</header>
+    
+    <div id="chat-container">
+        </div>
+    <div class="typing-indicator" id="loader">老師正在思考<span class="dots">...</span></div>
+    
+    <div id="input-area">
+        <input type="text" id="user-input" placeholder="輸入你的想法..." onkeypress="handleKeyPress(event)" autocomplete="off">
+        <button id="send-btn" onclick="sendMessage()">
+            <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+        </button>
+    </div>
+
+<script>
+    // ==========================================================
+    //  設定區：已整合您的 Key 和 Config
+    // ==========================================================
+    
+    // 1. Gemini API Key (來自您的上一則訊息)
+    const GEMINI_API_KEY = "AIzaSyAxGBHI8oM_87F-cgR1pA0ESOmFosH1sN4"; 
+
+    // 2. Firebase Config (來自您剛剛提供的 writing-ai-teacher 專案)
+    const firebaseConfig = {
+        apiKey: "AIzaSyDaYe4bu-RujGIfzjzKkrZgl1EPCxGYVN4",
+        authDomain: "writing-ai-teacher.firebaseapp.com",
+        projectId: "writing-ai-teacher",
+        storageBucket: "writing-ai-teacher.firebasestorage.app",
+        messagingSenderId: "108006740134",
+        appId: "1:108006740134:web:a203bd35d14f345aa56467",
+        measurementId: "G-TBVCG59B3M"
+    };
+
+    // ==========================================================
+    //  系統邏輯開始
+    // ==========================================================
+
+    // 初始化 Firebase
+    try {
+        firebase.initializeApp(firebaseConfig);
+    } catch (e) {
+        console.error("Firebase 初始化錯誤:", e);
+        alert("系統連線設定有誤，請通知老師！");
+    }
+    const db = firebase.firestore();
+
+    let studentId = "";
+    let chatHistory = []; 
+
+    [cite_start]// 系統提示詞：根據您提供的 PDF 寫作指導設計 [cite: 3-24]
+    const SYSTEM_PROMPT = `
+    你是一位親切、有耐心的國小六年級國語老師。你的任務是透過對話，引導學生完成康軒版六上第九課的作文〈一則故事的省思〉。
+    
+    【重要原則】
+    1. **禁止代寫**：不可以幫學生寫出整段文章，你要做的是「提問」和「引導」。
+    2. **正向鼓勵**：多用「很棒的想法！」、「這個觀點很有趣」來建立學生信心。
+    3. **分步驟進行**：一次只問一個問題，不要一次丟出一堆問題。
+
+    【教學流程】請依照以下順序引導：
+    1. [cite_start]**選定故事**：詢問學生想寫哪一則故事？(若學生卡住，請提供選項如：龜兔賽跑、放羊的孩子、井底之蛙、三人成虎等) [cite: 5-6]。
+    2. [cite_start]**簡述內容**：請學生用自己的話，簡單說一下故事在講什麼(主角、發生什麼事) [cite: 9]。
+    3. [cite_start]**確立主旨**：問學生這則故事教會我們什麼道理？ [cite: 8, 12]。
+    4. [cite_start]**自我省思與應用**：引導學生思考，這個道理如何運用在生活中？自己有沒有類似的經驗？或是未來會怎麼做？ [cite: 13-15]。
+    5. [cite_start]**總結與大綱**：當上述步驟都完成後，幫學生整理出一份「寫作架構表」(包含緣起、故事內容、省思、結語)，並鼓勵他將內容寫在稿紙上 [cite: 17-24]。
+
+    現在，請先向學生打招呼，確認他的座號，並開始第一步。
+    `;
+
+    // 啟動對話
+    function startSession() {
+        const input = document.getElementById('student-id').value.trim();
+        if (!input) return alert("請輸入座號才能開始喔！");
+        
+        studentId = input;
+        document.getElementById('header-title').innerText = `一則故事的省思 (座號: ${studentId})`;
+        document.getElementById('login-screen').style.display = 'none';
+
+        // 設定初始歷史紀錄 (隱藏的系統指令)
+        chatHistory = [
+            { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
+            { role: "model", parts: [{ text: "收到，我是作文老師，我會依照步驟引導學生。" }] }
+        ];
+
+        // 機器人開場白
+        const openingText = `哈囉！我是你的作文小幫手。👋\n座號 **${studentId}** 的同學你好！\n\n我們今天要來練習寫〈一則故事的省思〉。寫作的第一步是選故事。\n\n**你想好要寫哪一個故事了嗎？**\n(例如：童話故事、寓言，或是你最近看過的書都可以喔！如果沒想法也可以告訴我。)`;
+        
+        appendMessage("bot", openingText);
+        
+        // 記錄開場白到歷史，但不送出 API (節省額度)
+        chatHistory.push({ role: "model", parts: [{ text: openingText }] });
+    }
+
+    // 發送訊息處理
+    async function sendMessage() {
+        const inputField = document.getElementById('user-input');
+        const userText = inputField.value.trim();
+        if (!userText) return;
+
+        // 1. 顯示使用者訊息
+        appendMessage("user", userText);
+        inputField.value = "";
+        
+        // 2. 儲存到 Firebase (即時備份)
+        saveToFirebase(userText, "user");
+
+        // 3. 準備呼叫 Gemini
+        chatHistory.push({ role: "user", parts: [{ text: userText }] });
+        
+        // 顯示載入中
+        document.getElementById('loader').style.display = 'block';
+        document.getElementById('send-btn').disabled = true;
+
+        try {
+            // 呼叫 API
+            const botReply = await callGeminiAPI(chatHistory);
+            
+            // 4. 顯示機器人回應
+            appendMessage("bot", botReply);
+            chatHistory.push({ role: "model", parts: [{ text: botReply }] });
+            saveToFirebase(botReply, "model");
+
+        } catch (error) {
+            console.error("Gemini Error:", error);
+            appendMessage("bot", "老師現在網路有點卡卡的，請再傳送一次試試看！😅");
+        } finally {
+            document.getElementById('loader').style.display = 'none';
+            document.getElementById('send-btn').disabled = false;
+            // 保持焦點在輸入框，方便連續打字
+            inputField.focus();
+        }
+    }
+
+    // 呼叫 Google Gemini API
+    async function callGeminiAPI(history) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+        
+        const payload = {
+            contents: history,
+            generationConfig: {
+                maxOutputTokens: 800,
+                temperature: 0.7 
+            }
+        };
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error.message);
+        }
+        return data.candidates[0].content.parts[0].text;
+    }
+
+    // 將訊息顯示在聊天視窗
+    function appendMessage(sender, text) {
+        const container = document.getElementById('chat-container');
+        const div = document.createElement('div');
+        div.className = `message ${sender}`;
+        // 使用 marked 解析 Markdown 格式 (讓列表、粗體能正常顯示)
+        div.innerHTML = marked.parse(text); 
+        container.appendChild(div);
+        
+        // 自動捲動到底部
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    }
+
+    // 儲存資料到 Firestore
+    function saveToFirebase(text, role) {
+        if (!db) return;
+        
+        const docRef = db.collection("grade6_essays").doc(studentId);
+        
+        // 1. 新增對話紀錄到子集合
+        docRef.collection("chat").add({
+            text: text,
+            role: role,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        // 2. 更新學生的最後狀態 (方便老師在後台列表查看)
+        docRef.set({
+            student_id: studentId,
+            last_active: firebase.firestore.FieldValue.serverTimestamp(),
+            last_message: text.substring(0, 30) + (text.length > 30 ? "..." : ""),
+            status: "進行中" 
+        }, { merge: true });
+    }
+
+    // 按下 Enter 鍵發送
+    function handleKeyPress(e) {
+        if (e.key === 'Enter') sendMessage();
+    }
+</script>
+</body>
+</html>
