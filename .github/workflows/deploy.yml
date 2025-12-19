@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["main"]  # 如果您的主分支叫 master，請改為 master
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -25,11 +25,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Inject API Key
-        # 這一步就是魔法：把 "SECRET_KEY_PLACEHOLDER" 換成真正的 Key
+        # ★★★ 關鍵修正：使用 *.html 讓它自動搜尋並替換所有網頁 ★★★
         run: |
-          sed -i 's/SECRET_KEY_PLACEHOLDER/${{ secrets.GEMINI_API_KEY }}/g' index.html
-          # 如果您有 student.html 或 teacher.html 也要換，請加在下面：
-          # sed -i 's/SECRET_KEY_PLACEHOLDER/${{ secrets.GEMINI_API_KEY }}/g' student.html
+          sed -i 's/SECRET_KEY_PLACEHOLDER/${{ secrets.GEMINI_API_KEY }}/g' *.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
