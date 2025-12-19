@@ -1,0 +1,44 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]  # 如果您的主分支叫 master，請改為 master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inject API Key
+        # 這一步就是魔法：把 "SECRET_KEY_PLACEHOLDER" 換成真正的 Key
+        run: |
+          sed -i 's/SECRET_KEY_PLACEHOLDER/${{ secrets.GEMINI_API_KEY }}/g' index.html
+          # 如果您有 student.html 或 teacher.html 也要換，請加在下面：
+          # sed -i 's/SECRET_KEY_PLACEHOLDER/${{ secrets.GEMINI_API_KEY }}/g' student.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
